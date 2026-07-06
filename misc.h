@@ -1,6 +1,8 @@
 #ifndef MISC_H
 #define MISC_H
 
+#include "guest/guest-config.h"
+
 #ifdef __KERNEL__
 #include <linux/types.h>
 #else
@@ -110,7 +112,11 @@ typedef int32_t sdword_t;
 typedef uint16_t word_t;
 typedef uint8_t byte_t;
 
+#if GUEST_AARCH64
+typedef qword_t addr_t;
+#else
 typedef dword_t addr_t;
+#endif
 typedef dword_t uint_t;
 typedef sdword_t int_t;
 

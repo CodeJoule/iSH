@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "misc.h"
+#include "guest/guest-config.h"
 #include "kernel/calls.h"
 #include "kernel/random.h"
 #include "kernel/errno.h"
@@ -21,11 +22,13 @@
 #define ARGV_MAX 32 * PAGE_SIZE
 
 struct exec_args {
-    // number of arguments
     size_t count;
-    // series of count null-terminated strings, plus an extra null for good measure
     const char *args;
 };
+
+#if GUEST_AARCH64
+int elf_exec_aarch64(struct fd *fd, const char *file, struct exec_args argv, struct exec_args envp);
+#else
 
 static inline dword_t align_stack(dword_t sp);
 static inline ssize_t user_strlen(dword_t p);
@@ -424,6 +427,8 @@ beyond_hope:
     goto out_free_interp;
 }
 
+#endif /* !GUEST_AARCH64 */
+
 static size_t args_size(struct exec_args args) {
     const char *args_end = args.args;
     for (size_t i = 0; i < args.count; i++) {
@@ -473,7 +478,11 @@ static inline int user_memset(addr_t start, byte_t val, dword_t len) {
 }
 
 static int format_exec(struct fd *fd, const char *file, struct exec_args argv, struct exec_args envp) {
+#if GUEST_AARCH64
+    int err = elf_exec_aarch64(fd, file, argv, envp);
+#else
     int err = elf_exec(fd, file, argv, envp);
+#endif
     if (err != _ENOEXEC)
         return err;
     // other formats would go here

@@ -56,7 +56,8 @@ if [[ -n "$ISH_KERNEL" ]]; then
     kernel=$ISH_KERNEL
 fi
 kconfig=""
-for var in buildtype log b_ndebug b_sanitize log_handler kernel kconfig; do
+guest_arch=${ISH_GUEST_ARCH:-i386}
+for var in buildtype log b_ndebug b_sanitize log_handler kernel kconfig guest_arch; do
     old_value=$(python3 -c "import sys, json; v = next(x['value'] for x in json.load(sys.stdin) if x['name'] == '$var'); print(str(v).lower() if isinstance(v, bool) else ','.join(v) if isinstance(v, list) else v)" <<< $config)
     new_value=${!var}
     if [[ $old_value != $new_value ]]; then

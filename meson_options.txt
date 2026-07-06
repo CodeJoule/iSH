@@ -2,6 +2,8 @@ option('log', type: 'string', value: '')
 option('nolog', type: 'string', value: '')
 option('log_handler', type: 'string', value: 'dprintf')
 
+option('guest_arch', type: 'combo', choices: ['i386', 'aarch64'], value: 'i386',
+    description: 'Guest CPU architecture to emulate')
 option('engine', type: 'combo', choices: ['asbestos', 'unicorn'], value: 'asbestos')
 option('kernel', type: 'combo', choices: ['ish', 'linux'], value: 'ish')
 option('kconfig', type: 'array', value: [])

@@ -7,6 +7,10 @@
 #include "kernel/vdso.h"
 #include "emu/interrupt.h"
 
+#if GUEST_AARCH64
+#include "kernel/signal-aarch64.h"
+#endif
+
 #if is_gcc(9)
 #pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 #endif
@@ -15,7 +19,7 @@ int xsave_extra = 0;
 int fxsave_extra = 0;
 static void sigmask_set(sigset_t_ set);
 static void altstack_to_user(struct sighand *sighand, struct stack_t_ *user_stack);
-static bool is_on_altstack(dword_t sp, struct sighand *sighand);
+static bool is_on_altstack(addr_t sp, struct sighand *sighand);
 
 static int signal_is_blockable(int sig) {
     return sig != SIGKILL_ && sig != SIGSTOP_;
@@ -156,6 +160,9 @@ static addr_t sigreturn_trampoline(const char *name) {
 }
 
 static void setup_sigcontext(struct sigcontext_ *sc, struct cpu_state *cpu) {
+#if GUEST_AARCH64
+    (void) sc; (void) cpu;
+#else
     sc->ax = cpu->eax;
     sc->bx = cpu->ebx;
     sc->cx = cpu->ecx;
@@ -172,6 +179,7 @@ static void setup_sigcontext(struct sigcontext_ *sc, struct cpu_state *cpu) {
         sc->cr2 = cpu->segfault_addr;
     // TODO more shit
     sc->oldmask = current->blocked & 0xffffffff;
+#endif
 }
 
 static void setup_sigframe(struct siginfo_ *info, struct sigframe_ *frame) {
@@ -193,6 +201,17 @@ static void setup_sigframe(struct siginfo_ *info, struct sigframe_ *frame) {
 }
 
 static void setup_rt_sigframe(struct siginfo_ *info, struct rt_sigframe_ *frame) {
+#if GUEST_AARCH64
+    struct rt_sigframe_aarch64 *aframe = (struct rt_sigframe_aarch64 *) frame;
+    aframe->restorer = sigreturn_trampoline("__kernel_rt_sigreturn");
+    aframe->sig = info->sig;
+    aframe->info = *info;
+    aframe->uc.flags = 0;
+    aframe->uc.link = 0;
+    altstack_to_user(current->sighand, &aframe->uc.stack);
+    aarch64_setup_sigcontext(&aframe->uc.mcontext, &current->cpu);
+    aframe->uc.sigmask = current->blocked;
+#else
     frame->restorer = sigreturn_trampoline("__kernel_rt_sigreturn");
     frame->sig = info->sig;
     frame->info = *info;
@@ -213,6 +232,7 @@ static void setup_rt_sigframe(struct siginfo_ *info, struct rt_sigframe_ *frame)
         .int80 = 0x80cd,
     };
     memcpy(frame->retcode, &rt_retcode, sizeof(rt_retcode));
+#endif
 }
 
 static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
@@ -238,7 +258,12 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     struct sigaction_ *action = &sighand->action[info->sig];
     bool need_siginfo = action->flags & SA_SIGINFO_;
 
-    // setup the frame
+#if GUEST_AARCH64
+    struct rt_sigframe_aarch64 rt_frame = {};
+    setup_rt_sigframe(info, (struct rt_sigframe_ *) &rt_frame);
+    void *frame_ptr = &rt_frame;
+    size_t frame_size = sizeof(rt_frame);
+#else
     union {
         struct sigframe_ sigframe;
         struct rt_sigframe_ rt_sigframe;
@@ -251,12 +276,19 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
         setup_sigframe(info, &frame.sigframe);
         frame_size = sizeof(frame.sigframe);
     }
+    void *frame_ptr = &frame;
+#endif
 
     // set up registers for signal handler
+#if GUEST_AARCH64
+    current->cpu.x[0] = info->sig;
+    current->cpu.pc = sighand->action[info->sig].handler;
+    addr_t sp = current->cpu.sp;
+#else
     current->cpu.eax = info->sig;
     current->cpu.eip = sighand->action[info->sig].handler;
-
     dword_t sp = current->cpu.esp;
+#endif
     if (sighand->altstack && !is_on_altstack(sp, sighand)) {
         sp = sighand->altstack + sighand->altstack_size;
     }
@@ -271,7 +303,11 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     sp -= frame_size;
     // align sp + 4 on a 16-byte boundary because that's what the abi says
     sp = ((sp + 4) & ~0xf) - 4;
+#if GUEST_AARCH64
+    current->cpu.sp = sp;
+#else
     current->cpu.esp = sp;
+#endif
 
     // Update the mask. By default the signal will be blocked while in the
     // handler, but sigaction is allowed to customize this.
@@ -281,14 +317,23 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
 
     // these have to be filled in after the location of the frame is known
     if (need_siginfo) {
-        frame.rt_sigframe.pinfo = sp + offsetof(struct rt_sigframe_, info);
-        frame.rt_sigframe.puc = sp + offsetof(struct rt_sigframe_, uc);
-        current->cpu.edx = frame.rt_sigframe.pinfo;
-        current->cpu.ecx = frame.rt_sigframe.puc;
+#if GUEST_AARCH64
+        struct rt_sigframe_aarch64 *aframe = frame_ptr;
+        aframe->pinfo = sp + offsetof(struct rt_sigframe_aarch64, info);
+        aframe->puc = sp + offsetof(struct rt_sigframe_aarch64, uc);
+        current->cpu.x[1] = aframe->pinfo;
+        current->cpu.x[2] = aframe->puc;
+#else
+        struct rt_sigframe_ *frame = frame_ptr;
+        frame->pinfo = sp + offsetof(struct rt_sigframe_, info);
+        frame->puc = sp + offsetof(struct rt_sigframe_, uc);
+        current->cpu.edx = frame->pinfo;
+        current->cpu.ecx = frame->puc;
+#endif
     }
 
     // install frame
-    if (user_write(sp, &frame, frame_size)) {
+    if (user_write(sp, frame_ptr, frame_size)) {
         printk("failed to install frame for %d at %#x\n", info->sig, sp);
         deliver_signal(current, SIGSEGV_, SIGINFO_NIL);
     }
@@ -380,6 +425,7 @@ void receive_signals(void) {
     }
 }
 
+#if !GUEST_AARCH64
 static void restore_sigcontext(struct sigcontext_ *context, struct cpu_state *cpu) {
     cpu->eax = context->ax;
     cpu->ebx = context->bx;
@@ -396,8 +442,27 @@ static void restore_sigcontext(struct sigcontext_ *context, struct cpu_state *cp
 #define USE_FLAGS 0b1010000110111010101
     cpu->eflags = (context->flags & USE_FLAGS) | (cpu->eflags & ~USE_FLAGS);
 }
+#endif
 
 dword_t sys_rt_sigreturn(void) {
+#if GUEST_AARCH64
+    struct cpu_state *cpu = &current->cpu;
+    struct rt_sigframe_aarch64 frame;
+    if (user_get(cpu->sp - offsetof(struct rt_sigframe_aarch64, sig), frame)) {
+        deliver_signal(current, SIGSEGV_, SIGINFO_NIL);
+        return _EFAULT;
+    }
+    aarch64_restore_sigcontext(&frame.uc.mcontext, cpu);
+    lock(&current->sighand->lock);
+    if (!is_on_altstack(cpu->sp, current->sighand) &&
+            frame.uc.stack.size >= MINSIGSTKSZ_) {
+        current->sighand->altstack = frame.uc.stack.stack;
+        current->sighand->altstack_size = frame.uc.stack.size;
+    }
+    sigmask_set(frame.uc.sigmask);
+    unlock(&current->sighand->lock);
+    return 0;
+#else
     struct cpu_state *cpu = &current->cpu;
     struct rt_sigframe_ frame;
     // esp points past the first field of the frame
@@ -417,8 +482,10 @@ dword_t sys_rt_sigreturn(void) {
     sigmask_set(frame.uc.sigmask);
     unlock(&current->sighand->lock);
     return cpu->eax;
+#endif
 }
 
+#if !GUEST_AARCH64
 dword_t sys_sigreturn(void) {
     struct cpu_state *cpu = &current->cpu;
     struct sigframe_ frame;
@@ -435,6 +502,7 @@ dword_t sys_sigreturn(void) {
     unlock(&current->sighand->lock);
     return cpu->eax;
 }
+#endif
 
 struct sighand *sighand_new(void) {
     struct sighand *sighand = malloc(sizeof(struct sighand));
@@ -568,7 +636,7 @@ int_t sys_rt_sigpending(addr_t set_addr) {
     return 0;
 }
 
-static bool is_on_altstack(dword_t sp, struct sighand *sighand) {
+static bool is_on_altstack(addr_t sp, struct sighand *sighand) {
     return sp > sighand->altstack && sp <= sighand->altstack + sighand->altstack_size;
 }
 
@@ -578,7 +646,11 @@ static void altstack_to_user(struct sighand *sighand, struct stack_t_ *user_stac
     user_stack->flags = 0;
     if (sighand->altstack == 0)
         user_stack->flags |= SS_DISABLE_;
+#if GUEST_AARCH64
+    if (is_on_altstack(current->cpu.sp, sighand))
+#else
     if (is_on_altstack(current->cpu.esp, sighand))
+#endif
         user_stack->flags |= SS_ONSTACK_;
 }
 
@@ -595,7 +667,12 @@ dword_t sys_sigaltstack(addr_t ss_addr, addr_t old_ss_addr) {
         }
     }
     if (ss_addr != 0) {
-        if (is_on_altstack(current->cpu.esp, sighand)) {
+#if GUEST_AARCH64
+        if (is_on_altstack(current->cpu.sp, sighand))
+#else
+        if (is_on_altstack(current->cpu.esp, sighand))
+#endif
+        {
             unlock(&sighand->lock);
             return _EPERM;
         }

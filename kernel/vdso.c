@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "kernel/elf.h"
+#include "guest/guest-config.h"
+#if GUEST_AARCH64
+#include "kernel/elf64.h"
+#endif
 #include "kernel/vdso.h"
 
 __asm__(".data\n"
@@ -11,10 +15,22 @@ __asm__(".data\n"
         ".skip "str(VDSO_PAGES)" * (1 << 12) - (. - vdso_data)\n");
 
 int vdso_symbol(const char *name) {
+#if GUEST_AARCH64
+    struct elf64_header *header = (void *) vdso_data;
+    struct prg64_header *ph = (void *) ((char *) header + header->prghead_off);
+    struct dyn_ent {
+        qword_t tag;
+        qword_t val;
+    } *dyn = NULL;
+    for (int i = 0; i < header->phent_count; i++) {
+        if (ph[i].type == PT_DYNAMIC) {
+            dyn = (void *) ((char *) header + ph[i].offset);
+            break;
+        }
+    }
+#else
     struct elf_header *header = (void *) vdso_data;
     struct prg_header *ph = (void *) ((char *) header + header->prghead_off);
-
-    // find the PT_DYNAMIC section
     struct dyn_ent *dyn = NULL;
     for (int i = 0; i < header->phent_count; i++) {
         if (ph[i].type == PT_DYNAMIC) {
@@ -22,10 +38,10 @@ int vdso_symbol(const char *name) {
             break;
         }
     }
+#endif
     if (dyn == NULL)
         goto fail;
 
-    // grab pointers to the symbols and the strings
     char *strings = NULL;
     struct elf_sym *syms = NULL;
     uint32_t *hash = NULL;
@@ -41,15 +57,13 @@ int vdso_symbol(const char *name) {
     if (strings == NULL || syms == NULL || hash == NULL)
         goto fail;
 
-    // conveniently enough, the hashtable includes the number of symbols, which doesn't seeem to be anywhere else
-    // https://flapenguin.me/2017/04/24/elf-lookup-dt-hash/
     int num_syms = hash[1];
     for (int i = 0; i < num_syms; i++) {
         char *sym_name = strings + syms[i].name;
         if (strcmp(name, sym_name) == 0)
             return syms[i].value;
     }
-    return 0; // symbol not found
+    return 0;
 
 fail:
     // It shouldn't be possible to actually end up with an invalid vsdo compiled in

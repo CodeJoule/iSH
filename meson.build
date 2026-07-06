@@ -22,6 +22,13 @@ endforeach
 add_project_arguments('-DLOG_HANDLER_' + get_option('log_handler').to_upper() + '=1', language: 'c')
 add_project_arguments('-DENGINE_' + get_option('engine').to_upper() + '=1', language: 'c')
 
+guest_arch = get_option('guest_arch')
+if guest_arch == 'aarch64'
+    add_project_arguments('-DGUEST_ARCH_AARCH64', language: 'c')
+else
+    add_project_arguments('-DGUEST_ARCH_I386', language: 'c')
+endif
+
 if get_option('no_crlf')
     add_project_arguments('-DNO_CRLF', language: 'c')
 endif
@@ -39,32 +46,38 @@ dependencies = [librt, libm, libdl, threads, sqlite3]
 
 subdir('vdso') # ish depends on the vdso
 
-offsets = custom_target('offsets',
-    output: 'cpu-offsets.h', input: 'asbestos/offsets.c', depfile: 'cpu-offsets.h.d',
-    command: [find_program('tools/staticdefine.sh'), '@OUTDIR@/compile_commands.json', '@INPUT@', '@OUTPUT@', '@DEPFILE@'])
-
-emu_src = [
-    'emu/tlb.c',
-    'emu/fpu.c',
-    'emu/vec.c',
-    'emu/mmx.c',
-    'emu/float80.c',
-
-]
-gadgets = 'asbestos/gadgets-' + host_machine.cpu_family()
-emu_src += [
-    'asbestos/asbestos.c',
-    'asbestos/gen.c',
-    'asbestos/helpers.c',
-    gadgets+'/entry.S',
-    gadgets+'/memory.S',
-    gadgets+'/control.S',
-    gadgets+'/math.S',
-    gadgets+'/bits.S',
-    gadgets+'/string.S',
-    gadgets+'/misc.S',
-    offsets,
-]
+emu_src = []
+if guest_arch == 'aarch64'
+    emu_src += [
+        'emu/tlb.c',
+        'emu/aarch64-interp.c',
+        'asbestos/aarch64-engine.c',
+        'asbestos/aarch64-stub.c',
+    ]
+else
+    offsets = custom_target('offsets',
+        output: 'cpu-offsets.h', input: 'asbestos/offsets.c', depfile: 'cpu-offsets.h.d',
+        command: [find_program('tools/staticdefine.sh'), '@OUTDIR@/compile_commands.json', '@INPUT@', '@OUTPUT@', '@DEPFILE@'])
+    gadgets = 'asbestos/gadgets-' + host_machine.cpu_family()
+    emu_src += [
+        'emu/tlb.c',
+        'emu/fpu.c',
+        'emu/vec.c',
+        'emu/mmx.c',
+        'emu/float80.c',
+        'asbestos/asbestos.c',
+        'asbestos/gen.c',
+        'asbestos/helpers.c',
+        gadgets+'/entry.S',
+        gadgets+'/memory.S',
+        gadgets+'/control.S',
+        gadgets+'/math.S',
+        gadgets+'/bits.S',
+        gadgets+'/string.S',
+        gadgets+'/misc.S',
+        offsets,
+    ]
+endif
 
 libish_emu = library('ish_emu', emu_src, include_directories: includes)
 
@@ -76,8 +89,8 @@ libfakefs = library('fakefs',
 subdir('deps')
 
 if get_option('kernel') == 'ish'
-    if get_option('engine') != 'asbestos'
-        error('Only asbestos is supported with ish kernel')
+    if get_option('engine') != 'asbestos' and guest_arch != 'aarch64'
+        error('Only asbestos is supported with ish kernel for i386 guests')
     endif
 
     src = [
@@ -145,7 +158,15 @@ if get_option('kernel') == 'ish'
         'fs/poll.c',
         'kernel/poll.c',
         'kernel/epoll.c',
-
+    ]
+    if guest_arch == 'aarch64'
+        src += [
+            'kernel/exec-aarch64.c',
+            'kernel/calls-aarch64.c',
+            'kernel/signal-aarch64.c',
+        ]
+    endif
+    src += [
         'util/timer.c',
         'util/sync.c',
         'util/fifo.c',
@@ -213,7 +234,14 @@ if not meson.is_cross_build()
     # test for floating point library
     float80_test = executable('float80_test', ['emu/float80.c', 'emu/float80-test.c'], dependencies: [libm])
     test('float80', float80_test)
+
+    if guest_arch == 'aarch64'
+        aarch64_test = find_program('tests/aarch64/run-test.sh')
+        test('aarch64-hello', aarch64_test, timeout: 60)
+    endif
 endif
 
-e2e_test = find_program('tests/e2e/e2e.bash')
-test('e2e', e2e_test, args: ['-y'], timeout: 180)
+if guest_arch == 'i386'
+    e2e_test = find_program('tests/e2e/e2e.bash')
+    test('e2e', e2e_test, args: ['-y'], timeout: 180)
+endif

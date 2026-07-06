@@ -1,6 +1,12 @@
 #ifndef EMU_H
 #define EMU_H
 
+#include "guest/guest-config.h"
+
+#if GUEST_AARCH64
+#include "emu/cpu-aarch64.h"
+#else
+
 #include "misc.h"
 #include "emu/mmu.h"
 #include "emu/float80.h"
@@ -231,5 +237,7 @@ static inline const char *reg32_name(enum reg32 reg) {
         default: return "?";
     }
 }
+
+#endif /* GUEST_AARCH64 */
 
 #endif

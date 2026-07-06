@@ -1,6 +1,7 @@
 #include <sys/utsname.h>
 #include <string.h>
 #include "kernel/calls.h"
+#include "guest/guest-config.h"
 #include "platform/platform.h"
 
 #if __APPLE__
@@ -24,7 +25,11 @@ void do_uname(struct uname *uts) {
     strcpy(uts->hostname, hostname);
     strcpy(uts->release, "4.20.69-ish");
     snprintf(uts->version, sizeof(uts->version), "%s %s %s", uname_version, __DATE__, __TIME__);
+#if GUEST_AARCH64
+    strcpy(uts->arch, "aarch64");
+#else
     strcpy(uts->arch, "i686");
+#endif
     strcpy(uts->domain, "(none)");
 }
 

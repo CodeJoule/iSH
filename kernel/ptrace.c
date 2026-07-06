@@ -3,7 +3,17 @@
 #include "kernel/errno.h"
 #include "kernel/signal.h"
 #include "task.h"
+#include "guest/guest-config.h"
 #include <string.h>
+
+#if GUEST_AARCH64
+
+dword_t sys_ptrace(dword_t request, dword_t pid, addr_t addr, dword_t data) {
+    (void) request; (void) pid; (void) addr; (void) data;
+    return _ENOSYS;
+}
+
+#else
 
 // Returns stopped child with the given pid, locked with the ptrace lock
 static struct task *find_child(pid_t_ pid) {
@@ -253,3 +263,5 @@ dword_t sys_ptrace(dword_t request, dword_t pid, addr_t addr, dword_t data) {
             return _EPERM;
     }
 }
+
+#endif /* !GUEST_AARCH64 */

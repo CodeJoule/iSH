@@ -256,6 +256,7 @@ syscall_t syscall_table[] = {
 
 void dump_stack(int lines);
 
+#if !GUEST_AARCH64
 void handle_interrupt(int interrupt) {
     struct cpu_state *cpu = &current->cpu;
     if (interrupt == INT_SYSCALL) {
@@ -327,6 +328,7 @@ void handle_interrupt(int interrupt) {
         wait_for_ignore_signals(&group->stopped_cond, &group->lock, NULL);
     unlock(&group->lock);
 }
+#endif
 
 void dump_maps(void) {
     extern void proc_maps_dump(struct task *task, struct proc_data *buf);
@@ -360,10 +362,12 @@ void dump_mem(addr_t start, uint_t len) {
     }
 }
 
+#if !GUEST_AARCH64
 void dump_stack(int lines) {
     printk("stack at %x, base at %x, ip at %x\n", current->cpu.esp, current->cpu.ebp, current->cpu.eip);
     dump_mem(current->cpu.esp, lines * sizeof(dword_t) * 8);
 }
+#endif
 
 // TODO find a home for this
 #ifdef LOG_OVERRIDE
