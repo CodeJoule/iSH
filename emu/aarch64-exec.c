@@ -4,6 +4,8 @@
 #include "guest/interrupt.h"
 #include "debug.h"
 
+uint64_t helper_a64_decode_logical_imm(uint32_t insn);
+
 #define DEFAULT_CHANNEL instr
 
 static inline uint32_t bits32(uint32_t insn, int hi, int lo) {
@@ -409,7 +411,7 @@ int aarch64_exec_insn(struct cpu_state *cpu, struct tlb *tlb, addr_t pc, uint32_
         unsigned opc = bits32(insn, 30, 29);
         unsigned rd = bits32(insn, 4, 0);
         unsigned rn = bits32(insn, 9, 5);
-        qword_t imm = 0;
+        qword_t imm = helper_a64_decode_logical_imm(insn);
         qword_t val = read_reg(cpu, rn);
         qword_t res = 0;
         switch (opc) {

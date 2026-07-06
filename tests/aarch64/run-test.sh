@@ -15,5 +15,14 @@ if [[ ! -f "$HELLO" ]]; then
     -o "$HELLO" "$ROOT/tests/aarch64/hello.S"
 fi
 
+EXIT42="$ROOT/tests/aarch64/exit42"
+if [[ ! -f "$EXIT42" ]]; then
+  clang -target aarch64-linux -fuse-ld=lld -nostdlib -static \
+    -o "$EXIT42" "$ROOT/tests/aarch64/exit42.S"
+fi
+
 out="$("$ISH" "$HELLO" 2>/dev/null)"
 test "$out" = "hello"
+
+"$ISH" "$EXIT42" 2>/dev/null || rc=$?
+test "${rc:-0}" = "42"
