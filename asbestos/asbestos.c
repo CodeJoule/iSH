@@ -4,8 +4,19 @@
 #include "asbestos/gen.h"
 #include "asbestos/frame.h"
 #include "emu/cpu.h"
-#include "emu/interrupt.h"
+#include "guest/interrupt.h"
+#include "guest/guest-config.h"
 #include "util/list.h"
+
+#if GUEST_AARCH64
+#define guest_ip(cpu) ((cpu)->pc)
+#define set_guest_ip(cpu, val) ((cpu)->pc = (val))
+#define GUEST_BLOCK_LIMIT (PAGE_SIZE - 4)
+#else
+#define guest_ip(cpu) ((cpu)->eip)
+#define set_guest_ip(cpu, val) ((cpu)->eip = (val))
+#define GUEST_BLOCK_LIMIT (PAGE_SIZE - 15)
+#endif
 
 extern int current_pid(void);
 
@@ -124,7 +135,7 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
         // guarantee that by stopping as soon as there's less space left than
         // the maximum length of an x86 instruction
         // TODO refuse to decode instructions longer than 15 bytes
-        if (state.ip - ip >= PAGE_SIZE - 15) {
+        if (state.ip - ip >= GUEST_BLOCK_LIMIT) {
             gen_exit(&state);
             break;
         }
@@ -187,7 +198,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
     int interrupt = INT_NONE;
     while (interrupt == INT_NONE) {
-        addr_t ip = frame->cpu.eip;
+        addr_t ip = guest_ip(&frame->cpu);
         size_t cache_index = fiber_cache_hash(ip);
         struct fiber_block *block = cache[cache_index];
         if (block == NULL || block->addr != ip) {
@@ -244,7 +255,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
 static int cpu_single_step(struct cpu_state *cpu, struct tlb *tlb) {
     struct gen_state state;
-    gen_start(cpu->eip, &state);
+    gen_start(guest_ip(cpu), &state);
     gen_step(&state, tlb);
     gen_exit(&state);
     gen_end(&state);
@@ -263,7 +274,11 @@ int cpu_run_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
     if (cpu->poked_ptr == NULL)
         cpu->poked_ptr = &cpu->_poked;
     tlb_refresh(tlb, cpu->mmu);
+#if GUEST_AARCH64
+    int interrupt = cpu_step_to_interrupt(cpu, tlb);
+#else
     int interrupt = (cpu->tf ? cpu_single_step : cpu_step_to_interrupt)(cpu, tlb);
+#endif
     cpu->trapno = interrupt;
 
     struct asbestos *asbestos = cpu->mmu->asbestos;

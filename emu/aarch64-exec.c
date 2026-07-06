@@ -1,8 +1,6 @@
-#include <assert.h>
 #include <stdint.h>
 #include <string.h>
-#include "emu/cpu.h"
-#include "emu/tlb.h"
+#include "emu/aarch64-exec.h"
 #include "guest/interrupt.h"
 #include "debug.h"
 
@@ -107,7 +105,6 @@ static int handle_load_store(struct cpu_state *cpu, struct tlb *tlb, uint32_t in
     unsigned width = 1u << size;
 
     if (v) {
-        /* SIMD load/store - store zeros for unimplemented */
         if (is_load) {
             union vreg zero = {0};
             cpu->v[rt] = zero;
@@ -119,7 +116,7 @@ static int handle_load_store(struct cpu_state *cpu, struct tlb *tlb, uint32_t in
         qword_t val = 0;
         if (!mem_read(cpu, tlb, addr, &val, width))
             return INT_GPF;
-        if (size == 0 && (opc >> 1)) /* LDURSB/LDURSH variants */
+        if (size == 0 && (opc >> 1))
             val = sign_extend(val, 8 << (opc >> 1));
         else if (size == 1 && opc == 3)
             val = sign_extend(val, 16);
@@ -245,31 +242,36 @@ static int handle_exclusive(struct cpu_state *cpu, struct tlb *tlb, uint32_t ins
     return INT_NONE;
 }
 
-static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
-    uint32_t insn;
-    addr_t pc = cpu->pc;
-    if (!mem_read(cpu, tlb, pc, &insn, 4))
-        return INT_GPF;
+bool aarch64_insn_ends_block(uint32_t insn) {
+    if ((insn & 0xffe0001fu) == 0xd4000001u)
+        return true;
+    if ((insn & 0xfffffc1fu) == 0xd61f0000u)
+        return true;
+    if (bits32(insn, 31, 26) == 0x25)
+        return true;
+    if ((insn & 0xff000010u) == 0x54000000u)
+        return false;
+    if (bits32(insn, 31, 24) == 0xb4 || bits32(insn, 31, 24) == 0xb5)
+        return false;
+    if (bits32(insn, 31, 24) == 0xb6 || bits32(insn, 31, 24) == 0xb7)
+        return false;
+    return false;
+}
 
+int aarch64_exec_insn(struct cpu_state *cpu, struct tlb *tlb, addr_t pc, uint32_t insn) {
     TRACE("aarch64 %016llx: %08x\n", (unsigned long long) pc, insn);
 
-    unsigned op0 = bits32(insn, 28, 25);
-    (void) op0;
-
-    /* SVC */
     if ((insn & 0xffe0001fu) == 0xd4000001u) {
         cpu->pc = pc + 4;
         return INT_SYSCALL;
     }
 
-    /* RET / BR */
     if ((insn & 0xfffffc1fu) == 0xd61f0000u) {
         unsigned rn = bits32(insn, 9, 5);
         cpu->pc = read_reg(cpu, rn);
         return INT_NONE;
     }
 
-    /* B / BL */
     if (bits32(insn, 31, 26) == 0x25) {
         int64_t imm = sign_extend(bits32(insn, 25, 0) << 2, 28);
         if (insn & (1u << 31)) {
@@ -281,7 +283,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* B.cond */
     if ((insn & 0xff000010u) == 0x54000000u) {
         int64_t imm = sign_extend(bits32(insn, 23, 5) << 2, 21);
         unsigned cond = bits32(insn, 3, 0);
@@ -292,7 +293,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* CBZ/CBNZ */
     if (bits32(insn, 31, 24) == 0xb4 || bits32(insn, 31, 24) == 0xb5) {
         unsigned sf = bits32(insn, 31, 31);
         unsigned op = bits32(insn, 24, 24);
@@ -309,7 +309,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* TBZ/TBNZ */
     if (bits32(insn, 31, 24) == 0xb6 || bits32(insn, 31, 24) == 0xb7) {
         unsigned op = bits32(insn, 24, 24);
         int64_t imm = sign_extend(bits32(insn, 18, 5) << 2, 16);
@@ -323,7 +322,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* ADR/ADRP */
     if (bits32(insn, 31, 29) == 0) {
         unsigned op = bits32(insn, 31, 31);
         int64_t immlo = bits32(insn, 30, 29);
@@ -340,31 +338,26 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* Load/store unsigned immediate */
     if (bits32(insn, 28, 22) == 0x39) {
         cpu->pc = pc + 4;
         return handle_load_store(cpu, tlb, insn);
     }
 
-    /* Load/store register offset */
     if (bits32(insn, 28, 21) == 0xf1 || bits32(insn, 28, 21) == 0xf3) {
         cpu->pc = pc + 4;
         return handle_load_store_reg(cpu, tlb, insn);
     }
 
-    /* Load/store pair */
     if (bits32(insn, 28, 25) == 0xa) {
         cpu->pc = pc + 4;
         return handle_pair(cpu, tlb, insn);
     }
 
-    /* Exclusive */
     if (bits32(insn, 28, 21) == 0x30) {
         cpu->pc = pc + 4;
         return handle_exclusive(cpu, tlb, insn);
     }
 
-    /* MOVZ/MOVK/MOVN */
     if ((insn & 0x1f800000u) == 0x12800000u) {
         unsigned opc = bits32(insn, 30, 29);
         unsigned hw = bits32(insn, 22, 21);
@@ -385,7 +378,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* ADD/SUB immediate (incl. mov sp, sp, #imm aliases) */
     if ((insn & 0x1f000000u) == 0x11000000u) {
         unsigned sf = bits32(insn, 31, 31);
         unsigned op = bits32(insn, 30, 30);
@@ -412,13 +404,11 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* Logical immediate */
     if (bits32(insn, 28, 23) == 0x24) {
         unsigned sf = bits32(insn, 31, 31);
         unsigned opc = bits32(insn, 30, 29);
         unsigned rd = bits32(insn, 4, 0);
         unsigned rn = bits32(insn, 9, 5);
-        /* Simplified: treat unknown bitmask immediates as zero for now */
         qword_t imm = 0;
         qword_t val = read_reg(cpu, rn);
         qword_t res = 0;
@@ -436,7 +426,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* Data processing register */
     if (bits32(insn, 28, 24) == 0x0b || bits32(insn, 28, 24) == 0x1b) {
         unsigned sf = bits32(insn, 31, 31);
         unsigned opc = bits32(insn, 30, 29);
@@ -470,7 +459,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* Logical shifted register */
     if (bits32(insn, 28, 24) == 0x0a) {
         unsigned sf = bits32(insn, 31, 31);
         unsigned opc = bits32(insn, 30, 29);
@@ -503,7 +491,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* MOV wide (legacy check) - kept for MOVK variants */
     if (bits32(insn, 28, 23) == 0x25 && (insn & 0x1f800000u) != 0x12800000u) {
         unsigned opc = bits32(insn, 30, 29);
         unsigned hw = bits32(insn, 22, 21);
@@ -523,7 +510,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         return INT_NONE;
     }
 
-    /* MRS/MSR system registers (TLS) */
     if (bits32(insn, 28, 21) == 0xd5) {
         unsigned op0 = bits32(insn, 20, 19);
         unsigned op1 = bits32(insn, 18, 16);
@@ -532,7 +518,6 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         unsigned op2 = bits32(insn, 7, 5);
         unsigned rt = bits32(insn, 4, 0);
         bool is_msr = insn & (1u << 21);
-        /* TPIDR_EL0: op0=3, op1=3, crn=13, crm=0, op2=2 */
         if (op0 == 3 && op1 == 3 && crn == 13 && crm == 0 && op2 == 2) {
             if (is_msr)
                 cpu->tls_ptr = read_reg(cpu, rt);
@@ -543,13 +528,11 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
         }
     }
 
-    /* NOP and hints */
     if (insn == 0xd503201fu) {
         cpu->pc = pc + 4;
         return INT_NONE;
     }
 
-    /* BRK */
     if ((insn & 0xffe00000u) == 0xd4200000u) {
         cpu->pc = pc + 4;
         return INT_BREAKPOINT;
@@ -558,26 +541,4 @@ static int aarch64_step(struct cpu_state *cpu, struct tlb *tlb) {
     printk("unhandled aarch64 insn 0x%08x at 0x%llx\n", insn, (unsigned long long) pc);
     cpu->pc = pc + 4;
     return INT_UNDEFINED;
-}
-
-int aarch64_run_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
-    if (cpu->poked_ptr == NULL)
-        cpu->poked_ptr = &cpu->_poked;
-    tlb_refresh(tlb, cpu->mmu);
-
-    int interrupt = INT_NONE;
-    while (interrupt == INT_NONE) {
-        interrupt = aarch64_step(cpu, tlb);
-        if (interrupt == INT_NONE && __atomic_exchange_n(cpu->poked_ptr, false, __ATOMIC_SEQ_CST))
-            interrupt = INT_TIMER;
-        if (interrupt == INT_NONE && ++cpu->cycle % (1 << 10) == 0)
-            interrupt = INT_TIMER;
-    }
-    cpu->trapno = interrupt;
-    return interrupt;
-}
-
-void cpu_poke(struct cpu_state *cpu) {
-    if (cpu->poked_ptr)
-        __atomic_store_n(cpu->poked_ptr, true, __ATOMIC_SEQ_CST);
 }

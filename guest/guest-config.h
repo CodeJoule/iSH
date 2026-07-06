@@ -1,7 +1,7 @@
 #ifndef GUEST_CONFIG_H
 #define GUEST_CONFIG_H
 
-/* Dual-arch build: select guest ISA at compile time via meson guest_arch option. */
+/* Guest ISA is selected at compile time via meson guest_arch (default: aarch64). */
 #if defined(GUEST_ARCH_AARCH64)
 #define GUEST_AARCH64 1
 #define GUEST_I386 0

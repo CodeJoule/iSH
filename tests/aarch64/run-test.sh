@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-ISH="${ISH:-$ROOT/build-aarch64/ish}"
+ISH="${ISH:-$ROOT/build/ish}"
 HELLO="$ROOT/tests/aarch64/hello"
 
 if [[ ! -x "$ISH" ]]; then

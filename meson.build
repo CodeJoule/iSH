@@ -50,9 +50,10 @@ emu_src = []
 if guest_arch == 'aarch64'
     emu_src += [
         'emu/tlb.c',
-        'emu/aarch64-interp.c',
-        'asbestos/aarch64-engine.c',
-        'asbestos/aarch64-stub.c',
+        'emu/aarch64-exec.c',
+        'asbestos/asbestos.c',
+        'asbestos/gen-aarch64.c',
+        'asbestos/gadgets-guest-aarch64/entry.c',
     ]
 else
     offsets = custom_target('offsets',
