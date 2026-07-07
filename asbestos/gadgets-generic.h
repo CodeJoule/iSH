@@ -1,3 +1,6 @@
+#ifndef GADGETS_GENERIC_H
+#define GADGETS_GENERIC_H
+
 #include "cpu-offsets.h"
 
 #define ifin(thing, ...) _ifin(thing, __COUNTER__, __VA_ARGS__)
@@ -88,6 +91,8 @@
 #define N %%
 #else
 #define N ;
+#endif
+
 #endif
 
 # vim: ft=gas

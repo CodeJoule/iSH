@@ -169,6 +169,48 @@ int elf_exec_aarch64(struct fd *fd, const char *file, struct exec_args argv, str
     if ((err = read_prg_headers64(fd, header, &ph)) < 0)
         return err;
 
+    char *interp_name = NULL;
+    struct fd *interp_fd = NULL;
+    struct elf64_header interp_header;
+    struct prg64_header *interp_ph = NULL;
+    for (unsigned i = 0; i < header.phent_count; i++) {
+        if (ph[i].type != PT_INTERP)
+            continue;
+        if (interp_name) {
+            err = _EINVAL;
+            goto out_free_interp;
+        }
+        interp_name = malloc(ph[i].filesize);
+        if (interp_name == NULL) {
+            err = _ENOMEM;
+            goto out_free_ph;
+        }
+        if (fd->ops->lseek(fd, ph[i].offset, SEEK_SET) < 0) {
+            err = _EIO;
+            goto out_free_interp;
+        }
+        if (fd->ops->read(fd, interp_name, ph[i].filesize) != (ssize_t) ph[i].filesize) {
+            err = _ENOEXEC;
+            goto out_free_interp;
+        }
+        interp_fd = generic_open(interp_name, O_RDONLY, 0);
+        if (IS_ERR(interp_fd)) {
+            err = PTR_ERR(interp_fd);
+            interp_fd = NULL;
+            goto out_free_interp;
+        }
+        if ((err = read_header64(interp_fd, &interp_header)) < 0) {
+            if (err == _ENOEXEC)
+                err = _ELIBBAD;
+            goto out_free_interp;
+        }
+        if ((err = read_prg_headers64(interp_fd, interp_header, &interp_ph)) < 0) {
+            if (err == _ENOEXEC)
+                err = _ELIBBAD;
+            goto out_free_interp;
+        }
+    }
+
     lock(&current->general_lock);
     mm_release(current->mm);
     task_set_mm(current, mm_new());
@@ -184,8 +226,12 @@ int elf_exec_aarch64(struct fd *fd, const char *file, struct exec_args argv, str
     for (unsigned i = 0; i < header.phent_count; i++) {
         if (ph[i].type != PT_LOAD)
             continue;
-        if (!load_addr_set && header.type == ELF_DYNAMIC)
-            bias = find_hole_for_elf64(&header, ph);
+        if (!load_addr_set && header.type == ELF_DYNAMIC) {
+            if (interp_name)
+                bias = 0x56555000;
+            else
+                bias = find_hole_for_elf64(&header, ph);
+        }
         if ((err = load_entry64(ph[i], bias, fd)) < 0)
             goto beyond_hope;
         if (!load_addr_set) {
@@ -198,6 +244,18 @@ int elf_exec_aarch64(struct fd *fd, const char *file, struct exec_args argv, str
     }
 
     addr_t entry = bias + header.entry_point;
+    addr_t interp_base = 0;
+
+    if (interp_name) {
+        interp_base = find_hole_for_elf64(&interp_header, interp_ph);
+        for (int i = interp_header.phent_count - 1; i >= 0; i--) {
+            if (interp_ph[i].type != PT_LOAD)
+                continue;
+            if ((err = load_entry64(interp_ph[i], interp_base, interp_fd)) < 0)
+                goto beyond_hope;
+        }
+        entry = interp_base + interp_header.entry_point;
+    }
 
     pages_t vdso_pages = sizeof(vdso_data) >> PAGE_BITS;
     page_t vdso_page = pt_find_hole(current->mem, vdso_pages + 1);
@@ -260,7 +318,7 @@ int elf_exec_aarch64(struct fd *fd, const char *file, struct exec_args argv, str
         {AX64_PHDR, load_addr + header.prghead_off},
         {AX64_PHENT, sizeof(struct prg64_header)},
         {AX64_PHNUM, header.phent_count},
-        {AX64_BASE, 0},
+        {AX64_BASE, interp_base},
         {AX64_FLAGS, 0},
         {AX64_ENTRY, bias + header.entry_point},
         {AX64_UID, 0},
@@ -326,10 +384,33 @@ int elf_exec_aarch64(struct fd *fd, const char *file, struct exec_args argv, str
     current->cpu.pstate = 0;
 
     free(ph);
+    if (interp_name)
+        free(interp_name);
+    if (interp_fd)
+        fd_close(interp_fd);
+    if (interp_ph)
+        free(interp_ph);
     return 0;
+
+out_free_interp:
+    if (interp_name)
+        free(interp_name);
+    if (interp_fd)
+        fd_close(interp_fd);
+    if (interp_ph)
+        free(interp_ph);
+out_free_ph:
+    free(ph);
+    return err;
 
 beyond_hope:
     write_wrunlock(&current->mem->lock);
+    if (interp_name)
+        free(interp_name);
+    if (interp_fd)
+        fd_close(interp_fd);
+    if (interp_ph)
+        free(interp_ph);
     free(ph);
     return err;
 }

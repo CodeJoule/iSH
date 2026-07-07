@@ -1,10 +1,10 @@
 #include "gadgets-asm.h"
+#include "guest/interrupt.h"
 
 .gadget exit
     ldr x10, [_ip], #8
     str x10, [_cpu, CPU_pc]
-    mov w0, #1
-    ret
+    b fiber_ret
 
 .gadget interrupt
     ldr w8, [_ip], #8
@@ -13,41 +13,34 @@
     ldr x11, [_ip], #8
     str x11, [_cpu, CPU_segfault_addr]
     strb wzr, [_cpu, CPU_segfault_was_write]
-    mov w0, #2
-    bfi w0, w8, #8, #24
-    ret
+    mov _tmp, w8
+    b fiber_exit
 
 .gadget nop
     ldr x10, [_cpu, CPU_pc]
     add x10, x10, #4
     str x10, [_cpu, CPU_pc]
-    mov w0, #0
-    ret
+    gret
 
 .gadget svc
     ldr x10, [_cpu, CPU_pc]
     add x10, x10, #4
     str x10, [_cpu, CPU_pc]
-    mov w8, #INT_SYSCALL
-    mov w0, #2
-    bfi w0, w8, #8, #24
-    ret
+    mov _tmp, #INT_SYSCALL
+    b fiber_exit
 
 .gadget brk
     ldr x10, [_cpu, CPU_pc]
     add x10, x10, #4
     str x10, [_cpu, CPU_pc]
-    mov w8, #INT_BREAKPOINT
-    mov w0, #2
-    bfi w0, w8, #8, #24
-    ret
+    mov _tmp, #INT_BREAKPOINT
+    b fiber_exit
 
 .gadget ret
     ldr w10, [_ip], #8
     read_xn x11, w10
     str x11, [_cpu, CPU_pc]
-    mov w0, #1
-    ret
+    b fiber_ret
 
 .gadget branch
     ldr x10, [_ip], #8
@@ -61,15 +54,15 @@
     str x13, [_cpu, CPU_x + 30*8]
 2:
     str x12, [_cpu, CPU_pc]
-    mov w0, #1
-    ret
+    b fiber_ret
 
 .gadget mov_wide
     ldr w8, [_ip], #8
     ldr w9, [_ip], #8
     ldr w10, [_ip], #8
     ldr w11, [_ip], #8
-    lsl w12, w11, w9, lsl #4
+    lsl w9, w9, #4
+    lsl w12, w11, w9
     uxtw x12, w12
     cmp w8, #0
     b.eq 1f
@@ -79,7 +72,8 @@
     b.ne 3f
     read_xn x13, w10
     mov x14, #0xffff
-    lsl x14, x14, x9, lsl #4
+    uxtw x9, w9
+    lsl x14, x14, x9
     mvn x14, x14
     and x13, x13, x14
     orr x12, x13, x12
@@ -94,7 +88,92 @@
     ldr x10, [_cpu, CPU_pc]
     add x10, x10, #4
     str x10, [_cpu, CPU_pc]
-    mov w0, #0
-    ret
+    gret
+
+.gadget branch_cond
+    ldr w8, [_ip], #8
+    ldr x10, [_ip], #8
+    stp x29, x30, [sp, -0x10]!
+    mov x0, _cpu
+    mov w1, w8
+    bl helper_a64_cond_true
+    ldp x29, x30, [sp], 0x10
+    cbz w0, cond_false
+    ldr x14, [_cpu, CPU_pc]
+    add x14, x14, x10
+    str x14, [_cpu, CPU_pc]
+    b fiber_ret
+cond_false:
+    ldr x14, [_cpu, CPU_pc]
+    add x14, x14, #4
+    str x14, [_cpu, CPU_pc]
+    gret
+
+.gadget cbz
+    ldr w8, [_ip], #8
+    ldr w9, [_ip], #8
+    ldr w10, [_ip], #8
+    ldr x11, [_ip], #8
+    read_xn x12, w10
+    cbz w8, 1f
+    uxth x12, w12
+1:
+    cbnz x12, 2f
+    cmp w9, #0
+    b.eq 3f
+2:
+    ldr x13, [_cpu, CPU_pc]
+    add x13, x13, #4
+    str x13, [_cpu, CPU_pc]
+    gret
+3:
+    ldr x13, [_cpu, CPU_pc]
+    add x13, x13, x11
+    str x13, [_cpu, CPU_pc]
+    b fiber_ret
+
+.gadget tbz
+    ldr w8, [_ip], #8
+    ldr w9, [_ip], #8
+    ldr w10, [_ip], #8
+    ldr x11, [_ip], #8
+    read_xn x12, w9
+    uxtw x10, w10
+    lsr x12, x12, x10
+    and x12, x12, #1
+    cmp w12, w8
+    b.ne 1f
+    ldr x13, [_cpu, CPU_pc]
+    add x13, x13, x11
+    str x13, [_cpu, CPU_pc]
+    b fiber_ret
+1:
+    ldr x13, [_cpu, CPU_pc]
+    add x13, x13, #4
+    str x13, [_cpu, CPU_pc]
+    gret
+
+.gadget adr
+    ldr w9, [_ip], #8
+    ldr x10, [_ip], #8
+    ldr x11, [_cpu, CPU_pc]
+    add x11, x11, x10
+    write_xn w9, x11
+    ldr x10, [_cpu, CPU_pc]
+    add x10, x10, #4
+    str x10, [_cpu, CPU_pc]
+    gret
+
+.gadget adrp
+    ldr w9, [_ip], #8
+    ldr x10, [_ip], #8
+    ldr x11, [_cpu, CPU_pc]
+    bic x11, x11, #0xfff
+    add x11, x11, x10, lsl #12
+    write_xn w9, x11
+    ldr x10, [_cpu, CPU_pc]
+    add x10, x10, #4
+    str x10, [_cpu, CPU_pc]
+    gret
 
 # vim: ft=gas

@@ -1,51 +1,49 @@
-#include "../gadgets-generic.h"
 #include "gadgets-asm.h"
 #include "guest/interrupt.h"
 
 .global NAME(fiber_enter)
 .type_compat fiber_enter,function
 NAME(fiber_enter):
-    stp x19, x20, [sp, -0x60]!
+    stp x19, x20, [sp, -0x50]!
     stp x21, x22, [sp, 0x10]
     stp x23, x24, [sp, 0x20]
-    stp x25, x26, [sp, 0x30]
-    str x27, [sp, 0x40]
-    str lr, [sp, 0x48]
+    str x25, [sp, 0x30]
+    str lr, [sp, 0x38]
 
-    mov x19, x1
-    mov x20, x2
-    add x21, x0, FIBER_BLOCK_code
-    str x21, [sp, 0x50]
+    add _ip, x0, FIBER_BLOCK_code
+    mov _cpu, x1
+    add _tlb, x2, TLB_entries
+    gret
 
-fiber_loop:
-    ldr x8, [x21], #8
-    str x21, [sp, 0x50]
-    mov x0, x19
-    mov x1, x20
-    add x2, sp, 0x50
-    blr x8
-    and w9, w0, #0xff
-    cmp w9, #1
-    b.eq fiber_end_block
-    cmp w9, #2
-    b.eq fiber_interrupt
-    ldr x21, [sp, 0x50]
-    b fiber_loop
+.global fiber_ret_chain
+fiber_ret_chain:
+    tbz _ip, #63, 1f
+    b fiber_ret
+1:
+    ldr x8, [_cpu, CPU_poked_ptr]
+    ldrb w8, [x8]
+    cbnz w8, poke
+    sub x8, _ip, FIBER_BLOCK_code
+    str x8, [_cpu, LOCAL_last_block]
+    gret
 
-fiber_end_block:
-    mov w0, INT_NONE
-    b fiber_return
+poke:
+    ldr _tmp, [_ip, -FIBER_BLOCK_code+FIBER_BLOCK_addr]
+    str _tmp, [_cpu, CPU_pc]
+    b fiber_ret
 
-fiber_interrupt:
-    lsr w0, w0, #8
+.global fiber_ret
+fiber_ret:
+    mov _tmp, #-1
+    b fiber_exit
 
-fiber_return:
-    ldr lr, [sp, 0x48]
-    ldr x27, [sp, 0x40]
-    ldp x25, x26, [sp, 0x30]
+.global fiber_exit
+fiber_exit:
+    ldr lr, [sp, 0x38]
+    ldr x25, [sp, 0x30]
     ldp x23, x24, [sp, 0x20]
     ldp x21, x22, [sp, 0x10]
-    ldp x19, x20, [sp], 0x60
+    ldp x19, x20, [sp], 0x50
     ret
 
 # vim: ft=gas

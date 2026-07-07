@@ -13,4 +13,6 @@ ISH_LOGGER_iphoneos = nslog
 ISH_LOGGER_iphonesimulator = nslog
 ISH_LOGGER_macosx = dprintf
 
+// AArch64 rootfs: use Alpine aarch64 minirootfs via fakefsify (see README).
+// The bundled appstore APK below is i386-only; replace after converting rootfs.
 ROOTFS_URL = github.com/ish-app/roots/releases/download/g00712ff0a54b2839c5aa1a8ed758003ca65357dc/appstore-apk.tar.gz

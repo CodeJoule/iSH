@@ -58,16 +58,22 @@ if guest_arch == 'aarch64'
         'asbestos/asbestos.c',
         'asbestos/gen-aarch64.c',
         'asbestos/helpers-aarch64.c',
-        guest_gadgets + '/gadgets-c.c',
         offsets,
     ]
     if host_machine.cpu_family() == 'aarch64'
         emu_src += [
             guest_gadgets + '/entry.S',
             guest_gadgets + '/control.S',
+            guest_gadgets + '/memory.S',
+            guest_gadgets + '/math.S',
+            guest_gadgets + '/misc.S',
         ]
     else
-        emu_src += [guest_gadgets + '/entry-host.c']
+        emu_src += [
+            guest_gadgets + '/entry-host.c',
+            guest_gadgets + '/gadgets-c-hot.c',
+            guest_gadgets + '/gadgets-common.c',
+        ]
     endif
 else
     offsets = custom_target('offsets',

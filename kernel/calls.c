@@ -127,31 +127,158 @@ static qword_t sc_sched_yield(qword_t a1, qword_t a2, qword_t a3, qword_t a4, qw
 static qword_t sc_statx(qword_t dfd, qword_t path, qword_t flags, qword_t mask, qword_t buf, qword_t a6) {
     return sys_statx((fd_t) dfd, (addr_t) path, (int_t) flags, (uint_t) mask, (addr_t) buf);
 }
+static qword_t sc_lseek(qword_t fd, qword_t offset, qword_t whence, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_lseek((fd_t) fd, (dword_t) offset, (dword_t) whence);
+}
+static qword_t sc_getdents64(qword_t fd, qword_t dirp, qword_t count, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_getdents64((fd_t) fd, (addr_t) dirp, (dword_t) count);
+}
+static qword_t sc_faccessat(qword_t dfd, qword_t path, qword_t mode, qword_t flags, qword_t a5, qword_t a6) {
+    return sys_faccessat((fd_t) dfd, (addr_t) path, (mode_t_) mode, (dword_t) flags);
+}
+static qword_t sc_fstatat(qword_t dfd, qword_t path, qword_t buf, qword_t flags, qword_t a5, qword_t a6) {
+    return sys_fstatat64((fd_t) dfd, (addr_t) path, (addr_t) buf, (dword_t) flags);
+}
+static qword_t sc_readlinkat(qword_t dfd, qword_t path, qword_t buf, qword_t bufsize, qword_t a5, qword_t a6) {
+    return sys_readlinkat((fd_t) dfd, (addr_t) path, (addr_t) buf, (dword_t) bufsize);
+}
+static qword_t sc_ppoll(qword_t fds, qword_t nfds, qword_t timeout, qword_t sigmask, qword_t sigsetsize, qword_t a6) {
+    return sys_ppoll((addr_t) fds, (dword_t) nfds, (addr_t) timeout, (addr_t) sigmask, (dword_t) sigsetsize);
+}
+static qword_t sc_epoll_create1(qword_t flags, qword_t a2, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_epoll_create((int_t) flags);
+}
+static qword_t sc_epoll_ctl(qword_t epfd, qword_t op, qword_t fd, qword_t event, qword_t a5, qword_t a6) {
+    return sys_epoll_ctl((fd_t) epfd, (int_t) op, (fd_t) fd, (addr_t) event);
+}
+static qword_t sc_epoll_pwait(qword_t epfd, qword_t events, qword_t maxevents, qword_t timeout, qword_t sigmask, qword_t sigsetsize) {
+    return sys_epoll_pwait((fd_t) epfd, (addr_t) events, (int_t) maxevents, (int_t) timeout, (addr_t) sigmask, (dword_t) sigsetsize);
+}
+static qword_t sc_geteuid(qword_t a1, qword_t a2, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_geteuid32();
+}
+static qword_t sc_getegid(qword_t a1, qword_t a2, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_getegid32();
+}
+static qword_t sc_prctl(qword_t option, qword_t arg2, qword_t arg3, qword_t arg4, qword_t arg5, qword_t a6) {
+    return sys_prctl((dword_t) option, (uint_t) arg2, (uint_t) arg3, (uint_t) arg4, (uint_t) arg5);
+}
+static qword_t sc_tgkill(qword_t tgid, qword_t tid, qword_t sig, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_tgkill((pid_t_) tgid, (pid_t_) tid, (int) sig);
+}
+static qword_t sc_socket(qword_t domain, qword_t type, qword_t protocol, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_socket((dword_t) domain, (dword_t) type, (dword_t) protocol);
+}
+static qword_t sc_bind(qword_t fd, qword_t addr, qword_t addrlen, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_bind((fd_t) fd, (addr_t) addr, (dword_t) addrlen);
+}
+static qword_t sc_listen(qword_t fd, qword_t backlog, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_listen((fd_t) fd, (dword_t) backlog);
+}
+static qword_t sc_accept4(qword_t fd, qword_t addr, qword_t addrlen, qword_t flags, qword_t a5, qword_t a6) {
+    (void) flags;
+    return sys_accept((fd_t) fd, (addr_t) addr, (addr_t) addrlen);
+}
+static qword_t sc_connect(qword_t fd, qword_t addr, qword_t addrlen, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_connect((fd_t) fd, (addr_t) addr, (dword_t) addrlen);
+}
+static qword_t sc_getsockname(qword_t fd, qword_t addr, qword_t addrlen, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_getsockname((fd_t) fd, (addr_t) addr, (addr_t) addrlen);
+}
+static qword_t sc_getpeername(qword_t fd, qword_t addr, qword_t addrlen, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_getpeername((fd_t) fd, (addr_t) addr, (addr_t) addrlen);
+}
+static qword_t sc_sendto(qword_t fd, qword_t buf, qword_t len, qword_t flags, qword_t dest, qword_t addrlen) {
+    return sys_sendto((fd_t) fd, (addr_t) buf, (dword_t) len, (dword_t) flags, (addr_t) dest, (dword_t) addrlen);
+}
+static qword_t sc_recvfrom(qword_t fd, qword_t buf, qword_t len, qword_t flags, qword_t src, qword_t addrlen) {
+    return sys_recvfrom((fd_t) fd, (addr_t) buf, (dword_t) len, (dword_t) flags, (addr_t) src, (addr_t) addrlen);
+}
+static qword_t sc_setsockopt(qword_t fd, qword_t level, qword_t optname, qword_t optval, qword_t optlen, qword_t a6) {
+    return sys_setsockopt((fd_t) fd, (dword_t) level, (dword_t) optname, (addr_t) optval, (dword_t) optlen);
+}
+static qword_t sc_getsockopt(qword_t fd, qword_t level, qword_t optname, qword_t optval, qword_t optlen, qword_t a6) {
+    return sys_getsockopt((fd_t) fd, (dword_t) level, (dword_t) optname, (addr_t) optval, (addr_t) optlen);
+}
+static qword_t sc_shutdown(qword_t fd, qword_t how, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_shutdown((fd_t) fd, (dword_t) how);
+}
+static qword_t sc_eventfd2(qword_t initval, qword_t flags, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_eventfd2((uint_t) initval, (int_t) flags);
+}
+static qword_t sc_mkdirat(qword_t dfd, qword_t path, qword_t mode, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_mkdirat((fd_t) dfd, (addr_t) path, (mode_t_) mode);
+}
+static qword_t sc_unlinkat(qword_t dfd, qword_t path, qword_t flags, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_unlinkat((fd_t) dfd, (addr_t) path, (int_t) flags);
+}
+static qword_t sc_renameat2(qword_t olddfd, qword_t oldpath, qword_t newdfd, qword_t newpath, qword_t flags, qword_t a6) {
+    return sys_renameat2((fd_t) olddfd, (addr_t) oldpath, (fd_t) newdfd, (addr_t) newpath, (int_t) flags);
+}
+static qword_t sc_clock_getres(qword_t clk, qword_t res, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_clock_getres((clockid_t) clk, (addr_t) res);
+}
 
-static syscall_aarch64_t syscall_table_aarch64[400];
+static syscall_aarch64_t syscall_table_aarch64[450];
 
 static void init_syscall_table(void) {
     memset(syscall_table_aarch64, 0, sizeof(syscall_table_aarch64));
+    syscall_table_aarch64[17] = sc_getcwd;
+    syscall_table_aarch64[20] = sc_epoll_create1;
+    syscall_table_aarch64[21] = sc_epoll_ctl;
+    syscall_table_aarch64[22] = sc_epoll_pwait;
+    syscall_table_aarch64[23] = sc_dup;
+    syscall_table_aarch64[24] = sc_dup3;
     syscall_table_aarch64[25] = sc_fcntl;
     syscall_table_aarch64[29] = sc_ioctl;
+    syscall_table_aarch64[34] = sc_mkdirat;
+    syscall_table_aarch64[35] = sc_renameat2;
+    syscall_table_aarch64[48] = sc_faccessat;
+    syscall_table_aarch64[49] = sc_chdir;
     syscall_table_aarch64[56] = sc_openat;
     syscall_table_aarch64[57] = sc_close;
+    syscall_table_aarch64[59] = sc_pipe2;
+    syscall_table_aarch64[61] = sc_getdents64;
+    syscall_table_aarch64[62] = sc_lseek;
     syscall_table_aarch64[63] = sc_read;
     syscall_table_aarch64[64] = sc_write;
+    syscall_table_aarch64[78] = sc_readlinkat;
+    syscall_table_aarch64[79] = sc_fstatat;
     syscall_table_aarch64[93] = sc_exit;
     syscall_table_aarch64[94] = sc_exit_group;
     syscall_table_aarch64[96] = sc_set_tid_address;
     syscall_table_aarch64[98] = sc_futex;
     syscall_table_aarch64[99] = sc_set_robust_list;
+    syscall_table_aarch64[101] = sc_ppoll;
+    syscall_table_aarch64[115] = sc_nanosleep;
     syscall_table_aarch64[113] = sc_clock_gettime;
+    syscall_table_aarch64[114] = sc_clock_getres;
+    syscall_table_aarch64[124] = sc_sched_yield;
+    syscall_table_aarch64[130] = sc_tgkill;
     syscall_table_aarch64[134] = sc_rt_sigaction;
     syscall_table_aarch64[135] = sc_rt_sigprocmask;
     syscall_table_aarch64[139] = sc_rt_sigreturn;
+    syscall_table_aarch64[157] = sc_prctl;
     syscall_table_aarch64[160] = sc_uname;
     syscall_table_aarch64[169] = sc_gettimeofday;
     syscall_table_aarch64[172] = sc_getpid;
     syscall_table_aarch64[174] = sc_getuid;
+    syscall_table_aarch64[175] = sc_geteuid;
     syscall_table_aarch64[176] = sc_getgid;
+    syscall_table_aarch64[177] = sc_getegid;
+    syscall_table_aarch64[178] = sc_gettid;
+    syscall_table_aarch64[198] = sc_socket;
+    syscall_table_aarch64[199] = sc_bind;
+    syscall_table_aarch64[200] = sc_listen;
+    syscall_table_aarch64[201] = sc_accept4;
+    syscall_table_aarch64[202] = sc_connect;
+    syscall_table_aarch64[203] = sc_getsockname;
+    syscall_table_aarch64[204] = sc_getpeername;
+    syscall_table_aarch64[206] = sc_sendto;
+    syscall_table_aarch64[207] = sc_recvfrom;
+    syscall_table_aarch64[208] = sc_shutdown;
+    syscall_table_aarch64[209] = sc_setsockopt;
+    syscall_table_aarch64[210] = sc_getsockopt;
     syscall_table_aarch64[214] = sc_brk;
     syscall_table_aarch64[215] = sc_munmap;
     syscall_table_aarch64[220] = sc_clone;
@@ -162,14 +289,7 @@ static void init_syscall_table(void) {
     syscall_table_aarch64[261] = sc_prlimit64;
     syscall_table_aarch64[278] = sc_getrandom;
     syscall_table_aarch64[291] = sc_statx;
-    syscall_table_aarch64[17] = sc_getcwd;
-    syscall_table_aarch64[49] = sc_chdir;
-    syscall_table_aarch64[23] = sc_dup;
-    syscall_table_aarch64[24] = sc_dup3;
-    syscall_table_aarch64[59] = sc_pipe2;
-    syscall_table_aarch64[178] = sc_gettid;
-    syscall_table_aarch64[124] = sc_sched_yield;
-    syscall_table_aarch64[101] = sc_nanosleep;
+    syscall_table_aarch64[328] = sc_eventfd2;
 }
 
 void dump_stack(int lines);

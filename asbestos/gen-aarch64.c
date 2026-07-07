@@ -20,6 +20,15 @@ extern int gadget_a64_tbz(struct fiber_frame *frame, struct tlb *tlb, unsigned l
 extern int gadget_a64_adr(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
 extern int gadget_a64_adrp(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
 extern int gadget_a64_mov_wide(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_ldst(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_ldst_reg(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_pair(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_exclusive(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_add_sub_imm(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_logical_imm(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_add_sub_reg(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_logical_reg(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
+extern int gadget_a64_system(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
 extern int gadget_a64_insn(struct fiber_frame *frame, struct tlb *tlb, unsigned long **ip);
 
 static inline uint32_t bits32(uint32_t insn, int hi, int lo) {
@@ -139,6 +148,24 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
     } else if ((insn & 0x1f800000u) == 0x12800000u) {
         ggggg(gadget_a64_mov_wide, bits32(insn, 30, 29), bits32(insn, 22, 21),
                 bits32(insn, 4, 0), bits32(insn, 20, 5));
+    } else if (bits32(insn, 28, 22) == 0x39) {
+        gg(gadget_a64_ldst, insn);
+    } else if (bits32(insn, 28, 21) == 0xf1 || bits32(insn, 28, 21) == 0xf3) {
+        gg(gadget_a64_ldst_reg, insn);
+    } else if (bits32(insn, 28, 25) == 0xa) {
+        gg(gadget_a64_pair, insn);
+    } else if (bits32(insn, 28, 21) == 0x30) {
+        gg(gadget_a64_exclusive, insn);
+    } else if ((insn & 0x1f000000u) == 0x11000000u) {
+        gg(gadget_a64_add_sub_imm, insn);
+    } else if (bits32(insn, 28, 23) == 0x24) {
+        gg(gadget_a64_logical_imm, insn);
+    } else if (bits32(insn, 28, 24) == 0x0b || bits32(insn, 28, 24) == 0x1b) {
+        gg(gadget_a64_add_sub_reg, insn);
+    } else if (bits32(insn, 28, 24) == 0x0a) {
+        gg(gadget_a64_logical_reg, insn);
+    } else if (bits32(insn, 28, 21) == 0xd5) {
+        gg(gadget_a64_system, insn);
     } else if (insn == 0xd503201fu) {
         g(gadget_a64_nop);
     } else if ((insn & 0xffe00000u) == 0xd4200000u) {

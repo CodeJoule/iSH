@@ -42,16 +42,19 @@ Open the project in Xcode, open iSH.xcconfig, and change `ROOT_BUNDLE_IDENTIFIER
 
 To set up your environment, cd to the project and run `meson build` to create a build directory in `build`. Then cd to the build directory and run `ninja`.
 
-By default the guest architecture is AArch64. To build the legacy 32-bit x86 (i386) backend for tests:
+By default the guest architecture is AArch64. Build in Xcode with `ISH_GUEST_ARCH = aarch64` (set in `app/iSH.xcconfig`).
 
+For a runnable shell you need an **Alpine aarch64** fakefs root (the bundled App Store rootfs is i386):
+
+```bash
+curl -fL -o alpine-aarch64.tar.gz \
+  https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.7-aarch64.tar.gz
+./build/tools/fakefsify alpine-aarch64.tar.gz alpine-aarch64
 ```
-meson setup build-i386 -Dguest_arch=i386
-ninja -C build-i386
-```
 
-The default build (`meson setup build && ninja -C build`) uses the AArch64 guest backend with the asbestos block compiler and guest gadgets.
+Then import `alpine-aarch64` in the iSH app or run `./build/ish -f alpine-aarch64 /bin/sh` from the CLI build.
 
-Use Alpine aarch64 rootfs tarballs for the default AArch64 build. For i386, use Alpine i386 minirootfs.
+Legacy i386 guest: `-Dguest_arch=i386`.
 
 To set up a self-contained Alpine linux filesystem, download the Alpine minirootfs tarball for i386 from the [Alpine website](https://alpinelinux.org/downloads/) and run `./tools/fakefsify`, with the minirootfs tarball as the first argument and the name of the output directory as the second argument. Then you can run things inside the Alpine filesystem with `./ish -f alpine /bin/sh`, assuming the output directory is called `alpine`. If `tools/fakefsify` doesn't exist for you in your build directory, that might be because it couldn't find libarchive on your system (see above for ways to install it.)
 
