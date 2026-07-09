@@ -1,3 +1,5 @@
+#ifndef ASBESTOS_FRAME_H
+#define ASBESTOS_FRAME_H
 #include <stdatomic.h>
 #include "emu/cpu.h"
 
@@ -13,3 +15,5 @@ struct fiber_frame {
     struct fiber_block *last_block;
     long ret_cache[FIBER_RETURN_CACHE_SIZE]; // a map of ip to pointer-to-call-gadget-arguments
 };
+
+#endif

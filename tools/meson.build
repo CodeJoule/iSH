@@ -1,6 +1,6 @@
 if get_option('kernel') == 'ish'
-    # these tools are specific to x86_64 linux
-    if host_machine.system() == 'linux' and host_machine.cpu() == 'x86_64'
+    # these tools are specific to x86_64 linux with i386 guests
+    if host_machine.system() == 'linux' and host_machine.cpu() == 'x86_64' and get_option('guest_arch') == 'i386'
         transplant_src = [
             'vdso-transplant.c',
             'ptutil.c',
@@ -15,7 +15,7 @@ if get_option('kernel') == 'ish'
     endif
 
     unicorn = cc.find_library('unicorn', required: false)
-    if unicorn.found()
+    if unicorn.found() and get_option('guest_arch') == 'i386'
         executable('unicornomatic', ['unicornomatic.c', 'undefined-flags.c'], dependencies: [ish, unicorn])
         configure_file(input: 'ptraceomatic-gdb.gdb', output: 'unicornomatic-gdb.gdb', copy: true)
     endif

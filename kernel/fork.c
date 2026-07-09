@@ -2,6 +2,7 @@
 #include "kernel/task.h"
 #include "fs/fd.h"
 #include "kernel/calls.h"
+#include "guest/guest-config.h"
 #include "fs/tty.h"
 #include "kernel/mm.h"
 #include "kernel/ptrace.h"
@@ -55,8 +56,13 @@ static struct tgroup *tgroup_copy(struct tgroup *old_group) {
 
 static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid_addr, addr_t tls_addr, addr_t ctid_addr) {
     task->vfork = NULL;
-    if (stack != 0)
+    if (stack != 0) {
+#if GUEST_AARCH64
+        task->cpu.sp = stack;
+#else
         task->cpu.esp = stack;
+#endif
+    }
 
     int err;
     struct mm *mm = task->mm;
@@ -106,9 +112,13 @@ static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid
     unlock(&pids_lock);
 
     if (flags & CLONE_SETTLS_) {
+#if GUEST_AARCH64
+        task->cpu.tls_ptr = tls_addr;
+#else
         err = task_set_thread_area(task, tls_addr);
         if (err < 0)
             goto fail_free_sighand;
+#endif
     }
 
     err = _EFAULT;
@@ -161,7 +171,11 @@ dword_t sys_clone(dword_t flags, addr_t stack, addr_t ptid, addr_t tls, addr_t c
         unlock(&pids_lock);
         return err;
     }
+#if GUEST_AARCH64
+    task->cpu.x[0] = 0;
+#else
     task->cpu.eax = 0;
+#endif
 
     struct vfork_info vfork;
     if (flags & CLONE_VFORK_) {
