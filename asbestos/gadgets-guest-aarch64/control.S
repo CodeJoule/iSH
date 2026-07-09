@@ -110,27 +110,31 @@ cond_false:
     gret
 
 .gadget cbz
+    // args: sf, op (0=cbz/1=cbnz), rt, imm
     ldr w8, [_ip], #8
     ldr w9, [_ip], #8
     ldr w10, [_ip], #8
     ldr x11, [_ip], #8
     read_xn x12, w10
-    cbz w8, 1f
-    uxth x12, w12
+    cbnz w8, 1f
+    // sf=0: compare as 32-bit (W-form CBZ/CBNZ)
+    uxtw x12, w12
 1:
-    cbnz x12, 2f
-    cmp w9, #0
-    b.eq 3f
+    // take branch when (val==0) == (op==0), i.e. is_zero != op
+    cmp x12, #0
+    cset w12, eq
+    cmp w12, w9
+    b.eq 2f
+    // take branch
+    ldr x13, [_cpu, CPU_pc]
+    add x13, x13, x11
+    str x13, [_cpu, CPU_pc]
+    b fiber_ret
 2:
     ldr x13, [_cpu, CPU_pc]
     add x13, x13, #4
     str x13, [_cpu, CPU_pc]
     gret
-3:
-    ldr x13, [_cpu, CPU_pc]
-    add x13, x13, x11
-    str x13, [_cpu, CPU_pc]
-    b fiber_ret
 
 .gadget tbz
     ldr w8, [_ip], #8

@@ -163,8 +163,31 @@ static qword_t sc_getegid(qword_t a1, qword_t a2, qword_t a3, qword_t a4, qword_
 static qword_t sc_prctl(qword_t option, qword_t arg2, qword_t arg3, qword_t arg4, qword_t arg5, qword_t a6) {
     return sys_prctl((dword_t) option, (uint_t) arg2, (uint_t) arg3, (uint_t) arg4, (uint_t) arg5);
 }
+static qword_t sc_tkill(qword_t tid, qword_t sig, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_tkill((pid_t_) tid, (dword_t) sig);
+}
 static qword_t sc_tgkill(qword_t tgid, qword_t tid, qword_t sig, qword_t a4, qword_t a5, qword_t a6) {
     return sys_tgkill((pid_t_) tgid, (pid_t_) tid, (int) sig);
+}
+static qword_t sc_setsid(qword_t a1, qword_t a2, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_setsid();
+}
+static qword_t sc_renameat(qword_t olddfd, qword_t oldpath, qword_t newdfd, qword_t newpath, qword_t a5, qword_t a6) {
+    return sys_renameat((fd_t) olddfd, (addr_t) oldpath, (fd_t) newdfd, (addr_t) newpath);
+}
+static qword_t sc_readv(qword_t fd, qword_t iov, qword_t count, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_readv((fd_t) fd, (addr_t) iov, (dword_t) count);
+}
+static qword_t sc_writev(qword_t fd, qword_t iov, qword_t count, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_writev((fd_t) fd, (addr_t) iov, (dword_t) count);
+}
+static qword_t sc_fstat(qword_t fd, qword_t buf, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_fstat64((fd_t) fd, (addr_t) buf);
+}
+static qword_t sc_clock_nanosleep(qword_t clk, qword_t flags, qword_t req, qword_t rem, qword_t a5, qword_t a6) {
+    (void) clk; (void) flags;
+    // Best-effort: ignore clock id/flags and sleep like nanosleep.
+    return sys_nanosleep((addr_t) req, (addr_t) rem);
 }
 static qword_t sc_socket(qword_t domain, qword_t type, qword_t protocol, qword_t a4, qword_t a5, qword_t a6) {
     return sys_socket((dword_t) domain, (dword_t) type, (dword_t) protocol);
@@ -175,9 +198,15 @@ static qword_t sc_bind(qword_t fd, qword_t addr, qword_t addrlen, qword_t a4, qw
 static qword_t sc_listen(qword_t fd, qword_t backlog, qword_t a3, qword_t a4, qword_t a5, qword_t a6) {
     return sys_listen((fd_t) fd, (dword_t) backlog);
 }
+static qword_t sc_accept(qword_t fd, qword_t addr, qword_t addrlen, qword_t a4, qword_t a5, qword_t a6) {
+    return sys_accept((fd_t) fd, (addr_t) addr, (addr_t) addrlen);
+}
 static qword_t sc_accept4(qword_t fd, qword_t addr, qword_t addrlen, qword_t flags, qword_t a5, qword_t a6) {
     (void) flags;
     return sys_accept((fd_t) fd, (addr_t) addr, (addr_t) addrlen);
+}
+static qword_t sc_socketpair(qword_t domain, qword_t type, qword_t protocol, qword_t sockets, qword_t a5, qword_t a6) {
+    return sys_socketpair((dword_t) domain, (dword_t) type, (dword_t) protocol, (addr_t) sockets);
 }
 static qword_t sc_connect(qword_t fd, qword_t addr, qword_t addrlen, qword_t a4, qword_t a5, qword_t a6) {
     return sys_connect((fd_t) fd, (addr_t) addr, (dword_t) addrlen);
@@ -222,8 +251,10 @@ static qword_t sc_clock_getres(qword_t clk, qword_t res, qword_t a3, qword_t a4,
 static syscall_aarch64_t syscall_table_aarch64[450];
 
 static void init_syscall_table(void) {
+    // Numbers from Linux asm-generic/unistd.h (aarch64).
     memset(syscall_table_aarch64, 0, sizeof(syscall_table_aarch64));
     syscall_table_aarch64[17] = sc_getcwd;
+    syscall_table_aarch64[19] = sc_eventfd2;
     syscall_table_aarch64[20] = sc_epoll_create1;
     syscall_table_aarch64[21] = sc_epoll_ctl;
     syscall_table_aarch64[22] = sc_epoll_pwait;
@@ -232,7 +263,8 @@ static void init_syscall_table(void) {
     syscall_table_aarch64[25] = sc_fcntl;
     syscall_table_aarch64[29] = sc_ioctl;
     syscall_table_aarch64[34] = sc_mkdirat;
-    syscall_table_aarch64[35] = sc_renameat2;
+    syscall_table_aarch64[35] = sc_unlinkat;
+    syscall_table_aarch64[38] = sc_renameat;
     syscall_table_aarch64[48] = sc_faccessat;
     syscall_table_aarch64[49] = sc_chdir;
     syscall_table_aarch64[56] = sc_openat;
@@ -242,24 +274,30 @@ static void init_syscall_table(void) {
     syscall_table_aarch64[62] = sc_lseek;
     syscall_table_aarch64[63] = sc_read;
     syscall_table_aarch64[64] = sc_write;
+    syscall_table_aarch64[65] = sc_readv;
+    syscall_table_aarch64[66] = sc_writev;
+    syscall_table_aarch64[73] = sc_ppoll;
     syscall_table_aarch64[78] = sc_readlinkat;
     syscall_table_aarch64[79] = sc_fstatat;
+    syscall_table_aarch64[80] = sc_fstat;
     syscall_table_aarch64[93] = sc_exit;
     syscall_table_aarch64[94] = sc_exit_group;
     syscall_table_aarch64[96] = sc_set_tid_address;
     syscall_table_aarch64[98] = sc_futex;
     syscall_table_aarch64[99] = sc_set_robust_list;
-    syscall_table_aarch64[101] = sc_ppoll;
-    syscall_table_aarch64[115] = sc_nanosleep;
+    syscall_table_aarch64[101] = sc_nanosleep;
     syscall_table_aarch64[113] = sc_clock_gettime;
     syscall_table_aarch64[114] = sc_clock_getres;
+    syscall_table_aarch64[115] = sc_clock_nanosleep;
     syscall_table_aarch64[124] = sc_sched_yield;
-    syscall_table_aarch64[130] = sc_tgkill;
+    syscall_table_aarch64[130] = sc_tkill;
+    syscall_table_aarch64[131] = sc_tgkill;
     syscall_table_aarch64[134] = sc_rt_sigaction;
     syscall_table_aarch64[135] = sc_rt_sigprocmask;
     syscall_table_aarch64[139] = sc_rt_sigreturn;
-    syscall_table_aarch64[157] = sc_prctl;
+    syscall_table_aarch64[157] = sc_setsid;
     syscall_table_aarch64[160] = sc_uname;
+    syscall_table_aarch64[167] = sc_prctl;
     syscall_table_aarch64[169] = sc_gettimeofday;
     syscall_table_aarch64[172] = sc_getpid;
     syscall_table_aarch64[174] = sc_getuid;
@@ -268,28 +306,30 @@ static void init_syscall_table(void) {
     syscall_table_aarch64[177] = sc_getegid;
     syscall_table_aarch64[178] = sc_gettid;
     syscall_table_aarch64[198] = sc_socket;
-    syscall_table_aarch64[199] = sc_bind;
-    syscall_table_aarch64[200] = sc_listen;
-    syscall_table_aarch64[201] = sc_accept4;
-    syscall_table_aarch64[202] = sc_connect;
-    syscall_table_aarch64[203] = sc_getsockname;
-    syscall_table_aarch64[204] = sc_getpeername;
+    syscall_table_aarch64[199] = sc_socketpair;
+    syscall_table_aarch64[200] = sc_bind;
+    syscall_table_aarch64[201] = sc_listen;
+    syscall_table_aarch64[202] = sc_accept;
+    syscall_table_aarch64[203] = sc_connect;
+    syscall_table_aarch64[204] = sc_getsockname;
+    syscall_table_aarch64[205] = sc_getpeername;
     syscall_table_aarch64[206] = sc_sendto;
     syscall_table_aarch64[207] = sc_recvfrom;
-    syscall_table_aarch64[208] = sc_shutdown;
-    syscall_table_aarch64[209] = sc_setsockopt;
-    syscall_table_aarch64[210] = sc_getsockopt;
+    syscall_table_aarch64[208] = sc_setsockopt;
+    syscall_table_aarch64[209] = sc_getsockopt;
+    syscall_table_aarch64[210] = sc_shutdown;
     syscall_table_aarch64[214] = sc_brk;
     syscall_table_aarch64[215] = sc_munmap;
     syscall_table_aarch64[220] = sc_clone;
     syscall_table_aarch64[221] = sc_execve;
     syscall_table_aarch64[222] = sc_mmap;
     syscall_table_aarch64[226] = sc_mprotect;
+    syscall_table_aarch64[242] = sc_accept4;
     syscall_table_aarch64[260] = sc_wait4;
     syscall_table_aarch64[261] = sc_prlimit64;
+    syscall_table_aarch64[276] = sc_renameat2;
     syscall_table_aarch64[278] = sc_getrandom;
     syscall_table_aarch64[291] = sc_statx;
-    syscall_table_aarch64[328] = sc_eventfd2;
 }
 
 void dump_stack(int lines);

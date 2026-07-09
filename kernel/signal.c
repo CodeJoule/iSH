@@ -301,11 +301,13 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
         sp -= fxsave_extra;
     }
     sp -= frame_size;
-    // align sp + 4 on a 16-byte boundary because that's what the abi says
-    sp = ((sp + 4) & ~0xf) - 4;
 #if GUEST_AARCH64
+    // AArch64 ABI: SP must be 16-byte aligned at a public interface.
+    sp &= ~0xfull;
     current->cpu.sp = sp;
 #else
+    // align sp + 4 on a 16-byte boundary because that's what the abi says
+    sp = ((sp + 4) & ~0xf) - 4;
     current->cpu.esp = sp;
 #endif
 

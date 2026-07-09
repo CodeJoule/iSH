@@ -5,7 +5,8 @@ insn_gadget insn
 
 .global fiber_interrupt
 fiber_interrupt:
-    lsr _tmp, w20, #8
+    // insn_gadget leaves packed result in w23: kind | (interrupt << 8)
+    lsr _tmp, w23, #8
     b fiber_exit
 
 # vim: ft=gas

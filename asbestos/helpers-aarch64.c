@@ -34,7 +34,7 @@ int helper_a64_run_insn_word(struct fiber_frame *frame, struct tlb *tlb, uint32_
     addr_t pc = frame->cpu.pc;
     int interrupt = aarch64_exec_insn(&frame->cpu, tlb, pc, insn);
     if (interrupt != INT_NONE) {
-        frame->cpu.segfault_was_write = false;
+        // Preserve segfault_was_write set by aarch64_exec_insn on store faults.
         return A64_GADGET_INTERRUPT | (interrupt << 8);
     }
     if (frame->cpu.pc != pc + 4)
